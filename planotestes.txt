@@ -1,0 +1,83 @@
+## 1. Objetivo
+
+Validar que o script:
+varre apenas URLs internas válidas,
+respeita a ordem canônica (cap0 → cap1..10 → capAp) e depois inclui extras,
+gera PDFs individuais de cada página e mescla em um único PDF final,
+trata erros de rede/renderização sem abortar o processo,
+funciona no Windows com Python 3.13 usando Chrome/Edge local (sem baixar Chromium).
+
+## 2. Escopo
+
+Incluído: normalização de links, filtro de domínio/extensões, BFS crawling, ordenação, renderização Pyppeteer com Chrome/Edge, mesclagem via pypdf, nomes de arquivos gerados, tempo-limite e logs básicos.
+Excluído: renderização de sites externos, download de mídias, renderização 100% idêntica ao print do navegador (testes de pixel-perfect não são meta).
+
+## 3. Itens de Teste
+
+Funções: find_browser_executable, normalize, is_internal, crawl_all, order_urls, print_to_pdf, merge_pdfs, url_path.
+Artefatos: PDFs parciais em esm_pdf_pages/ e arquivo final Engenharia_de_Software_Moderna_site_completo.pdf.
+
+## 4. Riscos e Mitigações
+
+R1: Pyppeteer tentar baixar Chromium → Mitigação: apontar para Chrome/Edge e testar find_browser_executable.
+R2: Intermitência de rede → Mitigação: timeouts e captura de exceções por página; testes automatizados usam mocks (sem rede).
+R3: Mudanças no site → Mitigação: testes unitários focados em lógica local (normalização/ordenação) e testes integrados controlados.
+
+## 5. Ambiente de Testes
+
+SO: Windows 10/11 (user), opcional Linux/macOS em CI.
+Python: 3.13 (mín. 3.9).
+Navegador: Chrome estável ou Microsoft Edge.
+Dependências: pyppeteer==1.0.2, pypdf, beautifulsoup4, pytest, pytest-cov.
+
+## 6. Estratégia de Teste
+
+Unitários (rápidos, sem rede): normalização, filtros, ordenação, nome de arquivos e merge com PDFs sintéticos.
+Integração com mocks: simular pyppeteer.launch e urllib.request.urlopen para cobrir crawl_all e print_to_pdf sem abrir browser real.
+Sanidade (smoke) real (opcional): 2–3 URLs do site, gerar 2–3 PDFs e mesclar (teste local manual, opcional).
+
+## 7. Critérios
+
+Entrada: Ambiente configurado, Chrome/Edge disponível, dependências instaladas.
+Saída/aceite: 
+* Ordem final começa por /cap0.html … /cap10.html … /capAp.html.
+* 100% das URLs válidas produzem um PDF parcial (ou logam erro sem parar o processo).
+* Arquivo final é criado, legível, e contém todas as páginas parciais na ordem.
+
+Métricas (mínimas):
+* Cobertura de linha das funções críticas ≥ 80% (normalize/order/merge).
+* 0 falhas em testes unitários/integrados.
+
+## 8. Casos de Teste (matriz)
+## 8.1 Normalização & Filtro
+
+CT-01 normalize: remove #fragment e ?query; absolutiza corretamente; ignora externas; ignora extensões em SKIP_EXTS.
+Entrada: "/cap1.html#sec?x=1#y" → Saída: https://engsoftmoderna.info/cap1.html.
+
+CT-02 is_internal: aceita https://engsoftmoderna.info/...; rejeita http:// e domínios diferentes.
+
+## 8.2 Crawling
+
+CT-03 crawl_all: BFS sem duplicar URLs; segue apenas links normalizados; ignora sem rede (mock).
+CT-04 Resiliência: ao simular erro 500/timeout em uma URL, o crawler continua e coleta demais.
+
+## 8.3 Ordenação
+
+CT-05 order_urls: coloca cap0..cap10 e capAp, depois EXTRA_ROOTS, depois /artigos/ e /faq/ (ordem alfabética estável) e, por fim, outros.
+CT-06 Duplicidades: se capítulos existirem mais de uma vez na lista bruta, aparecem uma vez na ordenada.
+
+## 8.4 Geração de PDFs (com mocks)
+
+CT-07 Nomes de arquivo: index + nome seguro (substitui / por -; usa home quando vazio).
+CT-08 print_to_pdf: chama page.pdf(...) com printBackground=True e margens configuradas; trata exceções por URL e segue.
+CT-09 find_browser_executable: retorna caminho válido (quando simulado) ou None (usa fallback).
+
+## 8.5 Mesclagem
+
+CT-10 merge_pdfs: lê todos os PDFs da pasta e escreve FINAL_PDF na sequência lexicográfica dos nomes (confirmando ordenação).
+CT-11 PDFs corrompidos: ao injetar um PDF inválido, função ignora e continua.
+
+## 8.6 Não-Funcionais (rápidos)
+
+CT-12 Idempotência: executar 2x com mesmas entradas gera mesmos nomes e ordem.
+CT-13 Tempo-limite: timeouts não travam execução (com mock de atraso).
